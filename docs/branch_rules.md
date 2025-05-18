@@ -5,7 +5,7 @@
 
 main 브랜치는 가장 중요한 브랜치로, 검증된 코드들만 이곳에 merge해야 합니다.
 
-## develope
+## DM, JS, SA (Develope)
 
 develope 브랜치는 개발 중인 코드들은 커밋 단위로 저장하기 위한 브랜치입니다.
-커밋 단위, 작성법 등은 [./commit_rules.md]를 참고하세요.
+커밋 단위, 작성법 등은 [./commit_rules.md]를 참고하세요
