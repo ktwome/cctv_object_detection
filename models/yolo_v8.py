@@ -99,7 +99,7 @@ class YOLOModel:
         force_retrain=True,
         img_size=640,
         batch_size=None,
-        project="runs/detect",
+        project="results",
         name="train",
         lr0=0.01,
         lrf=0.01,
@@ -143,8 +143,30 @@ class YOLOModel:
         """
         try:
             import torch
+            import time
             from ultralytics import YOLO
-
+            
+            # 모델 크기 식별
+            model_size = "unknown"
+            if "yolov8n" in self.model_name:
+                model_size = "nano"
+            elif "yolov8s" in self.model_name:
+                model_size = "small"
+            elif "yolov8m" in self.model_name:
+                model_size = "medium"
+            elif "yolov8l" in self.model_name:
+                model_size = "large"
+            elif "yolov8x" in self.model_name:
+                model_size = "xlarge"
+                
+            # 타임스탬프를 포함한 의미있는 실험 이름 생성
+            if name == "train":
+                timestamp = time.strftime("%Y%m%d-%H%M%S")
+                name = f"yolov8-{model_size}-{timestamp}"
+                
+            # 디렉토리 생성
+            os.makedirs(project, exist_ok=True)
+            
             # 이미 학습된 모델 확인
             best_weight_path = os.path.join(project, name, "weights", "best.pt")
             if os.path.exists(best_weight_path) and not force_retrain:

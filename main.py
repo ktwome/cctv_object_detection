@@ -2,7 +2,7 @@ from src.data_preprocessing import basic_image_preprocess, create_yolo_labels
 from src.evaluate import evaluate_detection
 from src.inference import generate_prediction
 from src.train import train_model
-from src.model_yolo import YOLOModel
+from models.yolo_v8 import YOLOModel
 from src.ensemble import ensemble_predict, test_time_augmentation, visualize_detection, run_ensemble, run_tta
 import cv2
 import os
@@ -21,7 +21,7 @@ def main():
     """
     # 이미 학습된 모델 로드
     print("1. 학습된 모델 로드")
-    model_path = "runs/detect/train/weights/best.pt"
+    model_path = "results/train/weights/best.pt"
     model = YOLOModel()
     model.load(model_path)
     print(f"모델 로드 완료: {model_path}")
@@ -45,7 +45,7 @@ def main():
 """
 # 3) 모델 학습
 print("3. 모델 학습 (YOLOv8)")
-model = train_model(train_dir="data/train", val_dir="data/val", epochs=50)
+model = train_model(train_dir="data/train", val_dir="data/val", epochs=50, project="results")
 
 # 4) 테스트 이미지에서 객체 감지 추론 수행
 print("4. 추론 수행 (테스트 데이터)")
