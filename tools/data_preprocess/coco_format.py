@@ -263,21 +263,70 @@ def create_coco_labels(img_dir, json_dir, out_dir, phase="train", overwrite=Fals
     return processed_count
 
 
+def process_all_datasets(base_dir="data", overwrite=False):
+    """
+    train, val, test 세 가지 데이터셋에 대해 COCO 형식 라벨 변환을 수행합니다.
+    
+    매개변수:
+        base_dir (str): 데이터 베이스 디렉토리 경로
+        overwrite (bool): 기존 파일 덮어쓰기 여부
+    """
+    phases = ["train", "val", "test"]
+    total_processed = 0
+    
+    for phase in phases:
+        print(f"\n===== {phase.upper()} 데이터셋 COCO 라벨 변환 시작 =====")
+        img_dir = os.path.join(base_dir, phase, "images")
+        json_dir = os.path.join(base_dir, phase, "labels_json")
+        out_dir = os.path.join(base_dir, phase, "labels_coco")
+        
+        # 디렉토리가 존재하는지 확인
+        if not os.path.exists(img_dir):
+            print(f"[process_all_datasets] 경고: {img_dir} 디렉토리가 존재하지 않습니다. {phase} 단계 건너뜁니다.")
+            continue
+            
+        if not os.path.exists(json_dir):
+            print(f"[process_all_datasets] 경고: {json_dir} 디렉토리가 존재하지 않습니다. {phase} 단계 건너뜁니다.")
+            continue
+        
+        # 출력 디렉토리 생성
+        os.makedirs(out_dir, exist_ok=True)
+        
+        # COCO 라벨 생성 실행
+        processed = create_coco_labels(img_dir, json_dir, out_dir, phase=phase, overwrite=overwrite)
+        total_processed += processed
+        print(f"===== {phase.upper()} 데이터셋 처리 완료: {processed}개 파일 변환됨 =====")
+    
+    print(f"\n모든 데이터셋 처리 완료! 총 {total_processed}개 파일 변환됨")
+    return total_processed
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="JSON 어노테이션을 COCO 형식으로 변환")
-    parser.add_argument("--img_dir", required=True, help="이미지 디렉토리 경로")
-    parser.add_argument("--json_dir", required=True, help="JSON 어노테이션 디렉토리 경로")
-    parser.add_argument("--out_dir", required=True, help="COCO 형식 라벨 출력 디렉토리")
-    parser.add_argument("--phase", default="train", help="데이터셋 단계(train, val, test)")
+    parser.add_argument("--base_dir", default="data", help="데이터 베이스 디렉토리 경로")
+    parser.add_argument("--img_dir", help="이미지 디렉토리 경로 (단일 데이터셋 처리 시)")
+    parser.add_argument("--json_dir", help="JSON 어노테이션 디렉토리 경로 (단일 데이터셋 처리 시)")
+    parser.add_argument("--out_dir", help="COCO 형식 라벨 출력 디렉토리 (단일 데이터셋 처리 시)")
+    parser.add_argument("--phase", default="train", help="데이터셋 단계(train, val, test) (단일 데이터셋 처리 시)")
     parser.add_argument("--overwrite", action="store_true", help="기존 파일 덮어쓰기")
+    parser.add_argument("--all", action="store_true", help="모든 데이터셋(train, val, test) 처리")
     
     args = parser.parse_args()
     
-    # COCO 변환 실행
-    create_coco_labels(
-        args.img_dir,
-        args.json_dir,
-        args.out_dir,
-        phase=args.phase,
-        overwrite=args.overwrite
-    ) 
+    # 모든 데이터셋 처리 모드
+    if args.all or (args.img_dir is None and args.json_dir is None and args.out_dir is None):
+        process_all_datasets(args.base_dir, args.overwrite)
+    # 단일 데이터셋 처리 모드
+    elif args.img_dir and args.json_dir and args.out_dir:
+        # COCO 변환 실행
+        create_coco_labels(
+            args.img_dir,
+            args.json_dir,
+            args.out_dir,
+            phase=args.phase,
+            overwrite=args.overwrite
+        )
+    else:
+        print("오류: 단일 데이터셋 처리 시 --img_dir, --json_dir, --out_dir가 모두 필요합니다.")
+        print("또는 --all 옵션을 사용하여 모든 데이터셋을 처리하세요.")
+        parser.print_help() 

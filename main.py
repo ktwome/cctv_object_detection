@@ -25,44 +25,24 @@ def main():
     model = YOLOModel()
     model.load(model_path)
     print(f"모델 로드 완료: {model_path}")
-"""
-    # 1) 데이터 전처리
-    print("1. 데이터 전처리")
-    for phase in ["train"]:
-        inp = f"data/{phase}/images"
-        out = f"data/{phase}/images_processed"
-        basic_image_preprocess(inp, out, overwrite=True)
 
-    # 2) JSON 주석을 YOLO 형식 라벨로 변환
-    print("2. 라벨 형식 변환 (JSON -> YOLO)")
-    for phase in ["train", "val", "test"]:
-        img_dir = f"data/{phase}/images"
-        jsn_dir = f"data/{phase}/labels_json"
-        lbl_out = f"data/{phase}/labels"
-        create_yolo_labels(
-            img_dir, jsn_dir, lbl_out, overwrite=True
-        )  # JSON -> YOLO 텍스트 파일 (.txt)
-"""
-# 3) 모델 학습
-print("3. 모델 학습 (YOLOv8)")
-model = train_model(train_dir="data/train", val_dir="data/val", epochs=50, project="results")
+    # 3) 모델 학습
+    print("3. 모델 학습 (YOLOv8)")
+    model = train_model(train_dir="data/train", val_dir="data/val", epochs=50, project="results")
 
-# 4) 테스트 이미지에서 객체 감지 추론 수행
-print("4. 추론 수행 (테스트 데이터)")
-out_label_dir = generate_prediction(model, "data/test")
-# out_label_dir = "data/test/labels_pred"
+    # 4) 테스트 이미지에서 객체 감지 추론 수행
+    print("4. 추론 수행 (테스트 데이터)")
+    out_label_dir = generate_prediction(model, "data/test")
+    # out_label_dir = "data/test/labels_pred"
 
-# 5) 평가: 감지 정확도 계산 (정밀도, 재현율, F1 점수)
-print("5. 평가 수행 (IOU 임계값: 0.5)")
-metrics = evaluate_detection("data/test/labels", out_label_dir, debug=True)
+    # 5) 평가: 감지 정확도 계산 (정밀도, 재현율, F1 점수)
+    print("5. 평가 수행 (IOU 임계값: 0.5)")
+    metrics = evaluate_detection("data/test/labels", out_label_dir, debug=True)
 
-print(
-    f"종합 평가 결과 - Precision: {metrics['precision']:.4f}, Recall: {metrics['recall']:.4f}, F1: {metrics['f1']:.4f}"
-    f" mAP@0.5: {metrics['mAP@0.5']:.4f}"
-)
-
-# run_ensemble()
-# run_tta()
+    print(
+        f"종합 평가 결과 - Precision: {metrics['precision']:.4f}, Recall: {metrics['recall']:.4f}, F1: {metrics['f1']:.4f}"
+        f" mAP@0.5: {metrics['mAP@0.5']:.4f}"
+    )
 
 if __name__ == "__main__":
     main()

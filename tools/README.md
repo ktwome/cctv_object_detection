@@ -36,7 +36,7 @@ python tools/data_preprocess/basic_image_preprocess.py --input_dir data/train/im
 JSON 형식의 어노테이션을 YOLOv8 호환 포맷으로 변환합니다.
 
 ```bash
-python tools/data_preprocess/yolo_format.py --img_dir data/train/images --json_dir data/train/labels_json --out_dir data/train/labels_yolo --phase train --overwrite
+python tools/data_preprocess/yolo_format.py --base_dir ./data --all
 ```
 
 
@@ -45,5 +45,5 @@ python tools/data_preprocess/yolo_format.py --img_dir data/train/images --json_d
 JSON 형식의 어노테이션을 COCO 호환 포맷으로 변환합니다.
 
 ```bash
-python tools/data_preprocess/coco_format.py --img_dir data/train/images --json_dir data/train/labels_json --out_dir data/train/labels_coco --phase train --overwrite
+python tools/data_preprocess/coco_format.py --base_dir ./data --all
 ```
