@@ -1,7 +1,7 @@
 import numpy as np
 import cv2
 import os
-from .model_yolo import YOLOModel
+from ..models.yolo_v8 import YOLOModel
 
 def non_max_suppression(boxes, iou_threshold=0.5, conf_threshold=0.25):
     """중복 박스를 제거하는 NMS 알고리즘"""

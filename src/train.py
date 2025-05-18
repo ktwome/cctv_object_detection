@@ -1,4 +1,4 @@
-from .model_yolo import YOLOModel
+from ..models.yolo_v8 import YOLOModel
 
 
 def train_model(
@@ -11,7 +11,8 @@ def train_model(
     lr0=0.005,
     augment=True,
     mosaic=1.0,
-    mixup=0.3
+    mixup=0.3,
+    project="results"
 ):
     """
     지정된 유형의 객체 감지 모델을 학습합니다.
@@ -31,6 +32,7 @@ def train_model(
         augment (bool): 데이터 증강 활성화 여부
         mosaic (float): 모자이크 증강 비율 (0.0-1.0)
         mixup (float): 믹스업 증강 비율 (0.0-1.0)
+        project (str): 결과 저장 디렉토리 경로
 
     반환값:
         모델 객체 YOLOModel
@@ -81,6 +83,7 @@ def train_model(
         box=7.5,       # 박스 손실 가중치
         cls=1.5,       # 클래스 손실 가중치
         dfl=1.5,       # 분포 초점 손실 가중치
+        project=project
     )
 
     return yolom
