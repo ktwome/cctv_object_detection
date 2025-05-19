@@ -3,6 +3,7 @@ import json
 import os
 import argparse
 from tqdm import tqdm
+import numpy as np  # NumPy 모듈 추가
 
 
 def create_yolo_labels(img_dir, json_dir, out_dir, overwrite=False):
@@ -106,9 +107,22 @@ def create_yolo_labels(img_dir, json_dir, out_dir, overwrite=False):
         try:
             # 이미지 파일 로드
             img_path = os.path.join(img_dir, img_files[base_name])
-            img = cv2.imread(img_path)
+            
+            # 윈도우 경로를 POSIX 형식으로 정규화 (백슬래시 -> 슬래시)
+            normalized_path = img_path.replace('\\', '/')
+            
+            # 한글 경로 문제 해결을 위해 NumPy를 이용하여 파일 직접 로드
+            try:
+                with open(normalized_path, 'rb') as file:
+                    img_array = bytearray(file.read())
+                    img = cv2.imdecode(np.frombuffer(img_array, np.uint8), cv2.IMREAD_COLOR)
+            except Exception as e:
+                print(f"[create_yolo_labels] 경고: 이미지를 로드할 수 없음: {normalized_path}, 오류: {str(e)}")
+                error_count += 1
+                continue
+                
             if img is None:
-                print(f"[create_yolo_labels] 경고: 이미지를 로드할 수 없음: {img_path}")
+                print(f"[create_yolo_labels] 경고: 이미지를 로드할 수 없음: {normalized_path}")
                 error_count += 1
                 continue
 
@@ -116,6 +130,9 @@ def create_yolo_labels(img_dir, json_dir, out_dir, overwrite=False):
 
             # JSON 파일 로드
             json_path = os.path.join(json_dir, json_files[base_name])
+            # 윈도우 경로를 POSIX 형식으로 정규화
+            json_path = json_path.replace('\\', '/')
+            
             try:
                 with open(json_path, "r", encoding="utf-8") as f:
                     json_data = json.load(f)
