@@ -1,0 +1,6 @@
+Traceback (most recent call last):
+  File "D:\CDM\Workspace\IoT\cctv_object_detection\main.py", line 1, in <module>
+    from src.data_preprocessing import basic_image_preprocess, create_yolo_labels
+  File "D:\CDM\Workspace\IoT\cctv_object_detection\src\data_preprocessing.py", line 5, in <module>
+    import cv2
+ModuleNotFoundError: No module named 'cv2'

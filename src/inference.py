@@ -1,6 +1,9 @@
 import os
-
 import cv2
+import numpy as np
+import torch
+from PIL import Image
+from pathlib import Path
 
 
 def preprocess_image(img, use_gray=False, use_clahe=True):
@@ -131,19 +134,118 @@ def inference_yolo(yolo_model, test_dir, out_label_dir=None):
     return out_label_dir
 
 
+def inference_dfine(dfine_model, test_dir, out_label_dir=None):
+    """
+    D-FINE 모델을 사용하여 테스트 이미지에서 객체 감지 추론을 수행합니다.
+
+    매개변수:
+        dfine_model: D-FINE 모델 인스턴스
+        test_dir: 테스트 이미지 디렉토리 경로
+        out_label_dir: 출력 라벨 디렉토리 경로 (기본값: test_dir/labels_pred)
+
+    반환값:
+        출력 라벨 디렉토리 경로
+    """
+    if out_label_dir is None:
+        out_label_dir = os.path.join(test_dir, "labels_pred")
+
+    os.makedirs(out_label_dir, exist_ok=True)
+    img_dir = os.path.join(test_dir, "images")
+    files = sorted(
+        [f for f in os.listdir(img_dir) if f.lower().endswith((".jpg", ".jpeg"))]
+    )
+
+    print(f"[inference_dfine] 테스트 이미지: {len(files)}개")
+
+    for f in files:
+        # 이미지 경로 및 출력 파일 경로 생성
+        imgp = os.path.join(img_dir, f)
+        base = os.path.splitext(f)[0]
+        out_txt = os.path.join(out_label_dir, base + ".txt")
+
+        # 한글 경로 지원을 위한 이미지 로딩
+        try:
+            with open(imgp, 'rb') as img_file:
+                img_bytes = bytearray(img_file.read())
+                img_array = np.asarray(img_bytes, dtype=np.uint8)
+                img = cv2.imdecode(img_array, cv2.IMREAD_COLOR)
+        except Exception as e:
+            print(f"[경고] 이미지를 읽을 수 없습니다: {imgp} (오류: {e})")
+            continue
+
+        if img is None:
+            print(f"[경고] 이미지를 디코딩할 수 없습니다: {imgp}")
+            continue
+
+        # 이미지 전처리 적용
+        processed_img = preprocess_image(img, use_gray=False, use_clahe=True)
+
+        # 이미지 크기 (YOLO 좌표 정규화에 사용)
+        h, w, _ = processed_img.shape
+
+        # BGR -> RGB로 변환
+        processed_img_rgb = cv2.cvtColor(processed_img, cv2.COLOR_BGR2RGB)
+        
+        # 이미지를 텐서로 변환
+        img_tensor = torch.from_numpy(processed_img_rgb.transpose(2, 0, 1)) / 255.0  # [C,H,W]
+        
+        # D-FINE 모델로 객체 감지
+        results = dfine_model.predict(img_tensor, conf_thr=0.25)
+
+        # 결과를 YOLO 형식으로 변환
+        lines = []
+        for box in results:
+            # 박스 정보 추출 (x1, y1, x2, y2, 신뢰도, 클래스 ID)
+            x1, y1, x2, y2, sc, cls_id = box
+
+            # 픽셀 좌표를 YOLO 형식(중심점, 너비, 높이, 정규화)으로 변환
+            bw = x2 - x1  # 박스 너비
+            bh = y2 - y1  # 박스 높이
+            x_ctr = x1 + bw / 2  # 중심 X
+            y_ctr = y1 + bh / 2  # 중심 Y
+
+            # 이미지 크기로 정규화 (0~1 범위)
+            x_ctr /= w
+            y_ctr /= h
+            bw /= w
+            bh /= h
+
+            # YOLO 형식 라인 생성: "class_id x_center y_center width height score"
+            line = f"{int(cls_id)} {x_ctr:.6f} {y_ctr:.6f} {bw:.6f} {bh:.6f} {sc:.3f}"
+            lines.append(line)
+
+        # 결과를 텍스트 파일로 저장
+        with open(out_txt, "w") as fw:
+            for ln in lines:
+                fw.write(ln + "\n")
+
+    print(
+        f"[inference_dfine] 추론 완료: {len(files)}개 이미지, 결과 저장 경로: {out_label_dir}"
+    )
+    return out_label_dir
+
+
 def generate_prediction(model, test_dir, out_label_dir=None):
     """
     지정된 모델을 사용하여 테스트 이미지에서 객체를 감지하고 결과를 YOLO 형식으로 저장합니다.
 
     매개변수:
-        model_type (str): 모델 유형 ('traditional' 또는 'yolo')
-        model: 학습된 모델 객체 (HogSVMModel 또는 YOLOModel)
+        model: 학습된 모델 객체 (YOLOModel 또는 DFineModel)
         test_dir (str): 테스트 이미지가 있는 디렉토리 경로
         out_label_dir (str, optional): 결과 라벨을 저장할 디렉토리 경로
 
     반환값:
         str: 결과 라벨 디렉토리 경로
     """
-    # YOLO 모델 추론
-    lbl_dir = inference_yolo(model, test_dir)
+    # 모델 유형에 따라 추론 함수 선택
+    from models.yolo_v8 import YOLOModel
+    from models.dfine_b import DFineModel
+    
+    if isinstance(model, YOLOModel):
+        lbl_dir = inference_yolo(model, test_dir, out_label_dir)
+    elif isinstance(model, DFineModel):
+        lbl_dir = inference_dfine(model, test_dir, out_label_dir)
+    else:
+        raise ValueError(f"지원되지 않는 모델 유형: {type(model)}")
+        
     return lbl_dir

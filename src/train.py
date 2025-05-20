@@ -1,4 +1,4 @@
-from ..models.yolo_v8 import YOLOModel
+from models.yolo_v8 import YOLOModel
 
 
 def train_model(
