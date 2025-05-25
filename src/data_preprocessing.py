@@ -1,8 +1,10 @@
 import glob
 import json
 import os
+import traceback
 
 import cv2
+import numpy as np
 
 
 def basic_image_preprocess(
@@ -17,7 +19,7 @@ def basic_image_preprocess(
 
     매개변수:
         input_dir (str): 원본 이미지가 저장된 디렉토리 경로
-        output_dir (str): 전처리된 이미지를 저장할 디렉토리 경
+        output_dir (str): 전처리된 이미지를 저장할 디렉토리 경로
         use_gray (bool): 그레이스케일 변환 여부
         use_clahe (bool): CLAHE(대비 제한 적응형 히스토그램 평활화) 적용 여부
         overwrite (bool): 이미 존재하는 파일을 덮어쓸지 여부
@@ -77,6 +79,100 @@ def basic_image_preprocess(
     print(
         f"[basic_image_preprocess] 전처리 완료 => {output_dir}, 처리된 이미지 수: {processed_count}, 생략된 이미지 수: {skipped_count}"
     )
+    return processed_count
+
+
+def apply_custom_preprocessing(image_bgr, use_clahe=True, use_noise_reduction=True, use_normalization=True):
+    """
+    단일 이미지에 대해 CLAHE, 노이즈 제거, 정규화를 순차적으로 적용합니다.
+
+    매개변수:
+        image_bgr (numpy.ndarray): BGR 형식의 입력 이미지
+        use_clahe (bool): CLAHE 적용 여부
+        use_noise_reduction (bool): 가우시안 블러를 이용한 노이즈 제거 적용 여부
+        use_normalization (bool): 픽셀 값을 [0, 1] 범위로 정규화할지 여부
+
+    반환값:
+        numpy.ndarray: 전처리된 BGR 이미지
+    """
+    processed_image = image_bgr.copy()
+
+    # 1. CLAHE (Contrast Limited Adaptive Histogram Equalization)
+    if use_clahe:
+        # YCrCb 색상 공간으로 변환하여 밝기(Y) 채널에만 CLAHE 적용
+        ycrcb = cv2.cvtColor(processed_image, cv2.COLOR_BGR2YCrCb)
+        y, cr, cb = cv2.split(ycrcb)
+        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+        y_clahe = clahe.apply(y)
+        merged_ycrcb = cv2.merge((y_clahe, cr, cb))
+        processed_image = cv2.cvtColor(merged_ycrcb, cv2.COLOR_YCrCb2BGR)
+
+    # 2. 노이즈 제거 (Gaussian Blur)
+    if use_noise_reduction:
+        processed_image = cv2.GaussianBlur(processed_image, (5, 5), 0)
+
+    # 3. 정규화 (Normalization to [0, 1] range)
+    if use_normalization:
+        # 이미지가 이미 uint8 타입이므로 [0, 255] 범위라고 가정
+        # 정규화 후 float32 타입으로 변경
+        processed_image = processed_image.astype(np.float32) / 255.0
+        # 필요시 다시 uint8로 변환 (예: 파일 저장 시)하려면 * 255.0 하고 .astype(np.uint8) 수행
+        # 여기서는 float32 상태로 반환하여 모델 입력에 바로 사용하거나, 저장 전에 변환할 수 있도록 함
+
+    return processed_image
+
+
+def process_images_in_directory(input_dir, output_dir, overwrite=False, 
+                                use_clahe=True, use_noise_reduction=True):
+    """
+    지정된 디렉토리의 모든 이미지를 읽어 apply_custom_preprocessing를 적용하고, 
+    결과를 다른 디렉토리에 저장합니다. 저장되는 이미지는 항상 0-255 범위의 uint8입니다.
+
+    매개변수:
+        input_dir (str): 원본 이미지가 있는 디렉토리
+        output_dir (str): 전처리된 이미지를 저장할 디렉토리
+        overwrite (bool): 이미 파일이 존재할 경우 덮어쓸지 여부
+        use_clahe (bool): CLAHE 적용 여부
+        use_noise_reduction (bool): 노이즈 제거 적용 여부
+    """
+    os.makedirs(output_dir, exist_ok=True)
+    img_files = sorted(glob.glob(os.path.join(input_dir, "*.jpg"))) # .png 등 다른 확장자도 고려 가능
+    img_files.extend(sorted(glob.glob(os.path.join(input_dir, "*.png"))))
+    img_files.extend(sorted(glob.glob(os.path.join(input_dir, "*.jpeg"))))
+
+    processed_count = 0
+    skipped_count = 0
+    error_count = 0
+
+    print(f"'{input_dir}'의 이미지 전처리를 시작합니다. 총 {len(img_files)}개 파일.")
+
+    for img_path in img_files:
+        base_name = os.path.basename(img_path)
+        out_path = os.path.join(output_dir, base_name)
+
+        if not overwrite and os.path.exists(out_path):
+            skipped_count += 1
+            continue
+
+        try:
+            img = cv2.imread(img_path)
+            if img is None:
+                print(f"경고: 이미지 읽기 실패: {img_path}")
+                error_count += 1
+                continue
+            
+            # 사용자 정의 전처리 적용하여 저장 (항상 uint8, 0-255 범위로 저장)
+            # apply_custom_preprocessing 호출 시 use_normalization=False로 하여 uint8 이미지 반환받음
+            final_img_to_save = apply_custom_preprocessing(img, use_clahe, use_noise_reduction, use_normalization=False)
+            
+            cv2.imwrite(out_path, final_img_to_save)
+            processed_count += 1
+        except Exception as e:
+            print(f"오류: 이미지 처리 중 예외 발생 ({img_path}): {e}")
+            traceback.print_exc()
+            error_count += 1
+
+    print(f"'{output_dir}'에 이미지 전처리 완료. 성공: {processed_count}, 생략: {skipped_count}, 오류: {error_count}")
     return processed_count
 
 

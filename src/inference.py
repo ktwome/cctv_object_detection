@@ -4,6 +4,7 @@ import numpy as np
 import torch
 from PIL import Image
 from pathlib import Path
+from src.data_preprocessing import apply_custom_preprocessing
 
 
 def preprocess_image(img, use_gray=False, use_clahe=True):
@@ -44,7 +45,7 @@ def preprocess_image(img, use_gray=False, use_clahe=True):
     return processed_img
 
 
-def inference_yolo(yolo_model, test_dir, out_label_dir=None):
+def inference_yolo(yolo_model, test_dir, out_label_dir=None, apply_preprocessing_on_the_fly=False):
     """
     YOLOv8 모델을 사용하여 테스트 이미지에서 객체 감지 추론을 수행합니다.
 
@@ -60,6 +61,7 @@ def inference_yolo(yolo_model, test_dir, out_label_dir=None):
         yolo_model: YOLOv8 모델 인스턴스
         test_dir: 테스트 이미지 디렉토리 경로
         out_label_dir: 출력 라벨 디렉토리 경로 (기본값: test_dir/labels_pred)
+        apply_preprocessing_on_the_fly (bool): 추론 시점에 커스텀 전처리 적용 여부
 
     반환값:
         출력 라벨 디렉토리 경로
@@ -87,15 +89,23 @@ def inference_yolo(yolo_model, test_dir, out_label_dir=None):
             print(f"[경고] 이미지를 읽을 수 없습니다: {imgp}")
             continue
 
-        # 이미지 전처리 적용 (그레이스케일과 CLAHE만)
-        # 파라미터 값은 필요에 따라 조정 가능
-        processed_img = preprocess_image(img, use_gray=False, use_clahe=True)
+        # On-the-fly 전처리 적용 (YOLO 모델용)
+        if apply_preprocessing_on_the_fly:
+            # apply_custom_preprocessing는 모델 입력에 적합한 float32, [0,1] 범위의 이미지를 반환 (use_normalization=True 기본값)
+            img_for_prediction = apply_custom_preprocessing(img, use_clahe=True, use_noise_reduction=True, use_normalization=True)
+        else:
+            # 전처리를 적용하지 않는 경우, YOLO 모델은 일반적으로 uint8, BGR, [0,255] 이미지를 예상함
+            # Ultralytics YOLO 내부에서 정규화 등을 처리.
+            img_for_prediction = img 
 
         # 이미지 크기 (YOLO 좌표 정규화에 사용)
-        h, w, _ = processed_img.shape
+        # 원본 이미지 크기를 사용해야 함. 전처리로 크기가 변경되지 않았다고 가정.
+        # 만약 apply_custom_preprocessing가 크기를 변경한다면, 그에 맞게 h, w를 가져와야 함.
+        # 현재 apply_custom_preprocessing는 크기를 변경하지 않음.
+        h, w, _ = img.shape # 원본 이미지 기준으로 크기 계산
 
-        # YOLO 모델로 객체 감지 (전처리된 이미지 사용)
-        results = yolo_model.predict(processed_img, conf_thresh=0.25)
+        # YOLO 모델로 객체 감지 (전처리된 또는 원본 이미지 사용)
+        results = yolo_model.predict(img_for_prediction, conf_thresh=0.25)
 
         # 결과를 YOLO 형식으로 변환
         lines = []
@@ -134,7 +144,7 @@ def inference_yolo(yolo_model, test_dir, out_label_dir=None):
     return out_label_dir
 
 
-def inference_dfine(dfine_model, test_dir, out_label_dir=None):
+def inference_dfine(dfine_model, test_dir, out_label_dir=None, apply_preprocessing_on_the_fly=False):
     """
     D-FINE 모델을 사용하여 테스트 이미지에서 객체 감지 추론을 수행합니다.
 
@@ -142,6 +152,7 @@ def inference_dfine(dfine_model, test_dir, out_label_dir=None):
         dfine_model: D-FINE 모델 인스턴스
         test_dir: 테스트 이미지 디렉토리 경로
         out_label_dir: 출력 라벨 디렉토리 경로 (기본값: test_dir/labels_pred)
+        apply_preprocessing_on_the_fly (bool): 추론 시점에 커스텀 전처리 적용 여부
 
     반환값:
         출력 라벨 디렉토리 경로
@@ -177,18 +188,30 @@ def inference_dfine(dfine_model, test_dir, out_label_dir=None):
             print(f"[경고] 이미지를 디코딩할 수 없습니다: {imgp}")
             continue
 
-        # 이미지 전처리 적용
-        processed_img = preprocess_image(img, use_gray=False, use_clahe=True)
-
+        # On-the-fly 전처리 적용 (D-FINE 모델용)
+        img_for_prediction = img # 기본적으로 원본 이미지 사용
+        if apply_preprocessing_on_the_fly:
+            # D-FINE 모델이 어떤 입력을 기대하는지에 따라 use_normalization 등을 조정해야 할 수 있음.
+            # 여기서는 YOLO와 동일하게 float32, [0,1]로 정규화된 이미지를 사용한다고 가정.
+            img_for_prediction = apply_custom_preprocessing(img, use_clahe=True, use_noise_reduction=True, use_normalization=True)
+        
         # 이미지 크기 (YOLO 좌표 정규화에 사용)
-        h, w, _ = processed_img.shape
+        # 원본 이미지 크기 사용
+        h, w, _ = img.shape
 
         # BGR -> RGB로 변환
-        processed_img_rgb = cv2.cvtColor(processed_img, cv2.COLOR_BGR2RGB)
+        # img_for_prediction은 전처리 후에도 BGR 상태일 것임 (apply_custom_preprocessing가 BGR 반환)
+        processed_img_rgb = cv2.cvtColor(img_for_prediction, cv2.COLOR_BGR2RGB)
         
         # 이미지를 텐서로 변환
-        img_tensor = torch.from_numpy(processed_img_rgb.transpose(2, 0, 1)) / 255.0  # [C,H,W]
-        
+        # D-FINE 모델이 float32, [0,1] 입력을 받는다고 가정.
+        # 만약 img_for_prediction이 apply_custom_preprocessing(use_normalization=True)를 거쳤다면 이미 float32, [0,1]
+        # 그렇지 않다면 (uint8, 0-255), 여기서 정규화 필요.
+        if img_for_prediction.dtype == np.uint8: # 즉, apply_preprocessing_on_the_fly=False였거나, True여도 use_normalization=False인 경우
+             img_tensor = torch.from_numpy(processed_img_rgb.transpose(2, 0, 1)).float() / 255.0 
+        else: # 이미 float32, [0,1] 상태라고 가정
+             img_tensor = torch.from_numpy(processed_img_rgb.transpose(2, 0, 1))
+
         # D-FINE 모델로 객체 감지
         results = dfine_model.predict(img_tensor, conf_thr=0.25)
 
@@ -225,7 +248,7 @@ def inference_dfine(dfine_model, test_dir, out_label_dir=None):
     return out_label_dir
 
 
-def generate_prediction(model, test_dir, out_label_dir=None):
+def generate_prediction(model, test_dir, out_label_dir=None, preprocess_on_the_fly=False):
     """
     지정된 모델을 사용하여 테스트 이미지에서 객체를 감지하고 결과를 YOLO 형식으로 저장합니다.
 
@@ -233,6 +256,7 @@ def generate_prediction(model, test_dir, out_label_dir=None):
         model: 학습된 모델 객체 (YOLOModel 또는 DFineModel)
         test_dir (str): 테스트 이미지가 있는 디렉토리 경로
         out_label_dir (str, optional): 결과 라벨을 저장할 디렉토리 경로
+        preprocess_on_the_fly (bool): 추론 시점에 커스텀 전처리 적용 여부
 
     반환값:
         str: 결과 라벨 디렉토리 경로
@@ -242,9 +266,9 @@ def generate_prediction(model, test_dir, out_label_dir=None):
     from models.dfine_b import DFineModel
     
     if isinstance(model, YOLOModel):
-        lbl_dir = inference_yolo(model, test_dir, out_label_dir)
+        lbl_dir = inference_yolo(model, test_dir, out_label_dir, apply_preprocessing_on_the_fly=preprocess_on_the_fly)
     elif isinstance(model, DFineModel):
-        lbl_dir = inference_dfine(model, test_dir, out_label_dir)
+        lbl_dir = inference_dfine(model, test_dir, out_label_dir, apply_preprocessing_on_the_fly=preprocess_on_the_fly)
     else:
         raise ValueError(f"지원되지 않는 모델 유형: {type(model)}")
         

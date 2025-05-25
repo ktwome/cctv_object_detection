@@ -8,10 +8,12 @@
 ## 주요 기능
 
 1. **데이터 전처리**: 이미지 품질 향상 및 라벨 변환
-2. **모델 학습**: YOLOv8 또는 D-FINE 모델 학습
-3. **객체 감지**: 테스트 이미지에서 객체 감지 수행
-4. **성능 평가**: 객체 감지 정확도 평가
-5. **앙상블 및 TTA**: 여러 모델 앙상블 및 테스트 시간 증강
+2. **클래스 불균형 해결**: 전략적 다운샘플링을 통한 균형 잡힌 데이터셋 생성
+3. **데이터셋 분할**: 다운샘플링된 데이터를 학습/검증/테스트 세트로 자동 분할
+4. **모델 학습**: YOLOv8 또는 D-FINE 모델 학습
+5. **객체 감지**: 테스트 이미지에서 객체 감지 수행
+6. **성능 평가**: 객체 감지 정확도 평가
+7. **앙상블 및 TTA**: 여러 모델 앙상블 및 테스트 시간 증강
 
 ## 사용법
 
@@ -52,6 +54,16 @@ python main.py --model dfine --inference --weights results/dfine/best.pt --test_
 ```bash
 python main.py --model yolo --inference --weights results/ensemble --test_dir data/test
 ```
+
+### 5. 데이터셋 다운샘플링 및 분할
+
+클래스 불균형 문제를 해결하기 위한 전략적 다운샘플링을 수행하고, 데이터를 학습/검증/테스트 세트로 자동 분할합니다:
+
+```bash
+python tools/dataset_downsampling.py --coco_json data/train/labels_coco/train.json --img_dir data/train/images --output_dir dataset_split --balance_by_min_class --split_data
+```
+
+보다 자세한 내용은 [tools/README.md](tools/README.md)를 참조하세요.
 
 ## 매개변수 설명
 

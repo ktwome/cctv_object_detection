@@ -21,11 +21,15 @@ from .box_ops import box_xyxy_to_cxcywh
 
 def get_image_paths(img_root, ann_file):
     """COCO 주석 파일에서 이미지 경로 추출"""
+    import pathlib
+    
     with open(ann_file, 'r', encoding='utf-8') as f:
         coco = json.load(f)
     
+    # 이미지 경로를 pathlib.Path를 사용하여 정규화
+    img_root_path = pathlib.Path(img_root)
     img_ids = [img['id'] for img in coco['images']]
-    img_paths = {img['id']: os.path.join(img_root, img['file_name']) for img in coco['images']}
+    img_paths = {img['id']: str(img_root_path / img['file_name']) for img in coco['images']}
     
     # 주석에 해당하는 이미지 ID 확인
     valid_img_ids = set()
@@ -55,6 +59,8 @@ class CocoDiffusionDataset(Dataset):
                  diffusion_steps=100, transforms=None,
                  cache_images=True, max_cache_size=1000,
                  memory_efficient=True):
+        import pathlib
+        
         self.img_root = img_root
         self.json_file = json_file
         self.transforms = transforms
@@ -73,8 +79,9 @@ class CocoDiffusionDataset(Dataset):
         with open(json_file, 'r', encoding='utf-8') as f:
             self.coco = json.load(f)
         
-        # 이미지 경로와 ID 매핑 생성
-        self.img_paths = {img['id']: os.path.join(img_root, img['file_name']) 
+        # 이미지 경로와 ID 매핑 생성 (pathlib.Path 사용하여 OS에 맞는 경로 구분자 적용)
+        img_root_path = pathlib.Path(img_root)
+        self.img_paths = {img['id']: str(img_root_path / img['file_name']) 
                           for img in self.coco['images']}
         
         # 카테고리 ID -> 인덱스 매핑 생성

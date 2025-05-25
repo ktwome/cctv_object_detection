@@ -144,7 +144,8 @@ class DFineModel:
               max_cache_size=1000,
               use_subset=False,
               subset_ratio=0.1,
-              balanced_sampling=False):
+              balanced_sampling=False,
+              val_img_root=None):
         """
         D-FINE-B 모델 학습
         
@@ -174,7 +175,12 @@ class DFineModel:
             use_subset: 데이터셋의 일부만 사용할지 여부
             subset_ratio: 사용할 데이터셋 비율 (0.1=10%)
             balanced_sampling: 클래스 균형을 위한 가중치 샘플링 사용 여부
+            val_img_root: 검증 이미지 디렉토리 경로 (기본값: img_root와 동일)
         """
+        # 검증 이미지 루트 디렉토리 설정
+        if val_img_root is None:
+            val_img_root = img_root
+            
         # 멀티프로세싱 설정 최적화
         import torch.multiprocessing as mp
         mp.set_sharing_strategy('file_system')  # 파일 시스템 기반 공유로 변경
@@ -194,6 +200,8 @@ class DFineModel:
             num_workers = min(4, max(1, num_workers // 4))
         
         print(f"학습 설정:\n - COCO 주석 파일: {train_json}\n - 이미지 루트: {img_root}")
+        if val_img_root != img_root:
+            print(f" - 검증 이미지 루트: {val_img_root}")
         print(f" - 에포크: {epochs}, 배치: {batch}, 학습률: {lr}")
         print(f" - AMP: {amp}, EMA: {ema_decay is not None}, W&B: {log_wandb}")
         print(f" - 이미지 크기: {resize_to}, 데이터 로더 워커: {num_workers}개")
@@ -221,9 +229,9 @@ class DFineModel:
                 train_json, img_root, self.num_classes, diffusion_steps, aug_fn,
                 cache_images=True, max_cache_size=max_cache_size, memory_efficient=True)
             
-            # 검증 데이터셋 로드
+            # 검증 데이터셋 로드 (val_img_root 사용)
             ds_val = CocoDiffusionDataset(
-                val_json, img_root, self.num_classes, diffusion_steps, None,
+                val_json, val_img_root, self.num_classes, diffusion_steps, None,
                 cache_images=True, max_cache_size=max_cache_size//2, memory_efficient=True)
             
             # 데이터 서브셋 적용 (개발/디버깅용)
@@ -652,54 +660,91 @@ class DFineModel:
             images = batch["image"].to(self.device)
             targets = batch["target"]
             
-            # 예측 수행
-            outputs = model(images)
-            
-            # 각 이미지에 대한 평가
-            for i, (output, target) in enumerate(zip(outputs, targets)):
-                # 예측 박스, 점수, 클래스
-                pred_boxes = output["boxes"][i]
-                pred_scores = output["scores"][i]
-                pred_labels = output["labels"][i]
+            try:
+                # 예측 수행
+                outputs = model(images)
                 
-                # 타겟 박스, 클래스
-                gt_boxes = target["boxes"]
-                gt_labels = target["labels"]
-                
-                # 임계값 이상 예측만 사용
-                keep = pred_scores > 0.5
-                pred_boxes = pred_boxes[keep]
-                pred_labels = pred_labels[keep]
-                
-                # 간단한 매칭 (실제로는 더 정교한 평가 필요)
-                matched_gt = set()
-                tp = 0
-                fp = 0
-                
-                for pb, pl in zip(pred_boxes, pred_labels):
-                    best_iou = 0.5  # IoU 임계값
-                    best_gt = -1
+                # 출력 형식 확인 및 처리
+                for i in range(len(targets)):
+                    target = targets[i]
                     
-                    for j, (gb, gl) in enumerate(zip(gt_boxes, gt_labels)):
-                        if j in matched_gt or pl != gl:
+                    # 모델 출력이 다양한 형식일 수 있으므로 구조에 따라 처리
+                    if isinstance(outputs, dict):
+                        # 출력이 단일 사전인 경우
+                        if "boxes" in outputs and len(outputs["boxes"]) > i:
+                            pred_boxes = outputs["boxes"][i]
+                            pred_scores = outputs["scores"][i] if "scores" in outputs else torch.ones_like(pred_boxes[:,0])
+                            pred_labels = outputs["labels"][i] if "labels" in outputs else torch.zeros_like(pred_scores, dtype=torch.long)
+                        else:
+                            # 출력 형식이 일치하지 않으면 건너뜀
                             continue
-                        
-                        # IoU 계산 (간소화)
-                        iou = self._box_iou(pb.cpu(), gb.cpu())
-                        
-                        if iou > best_iou:
-                            best_iou = iou
-                            best_gt = j
-                    
-                    if best_gt >= 0:
-                        tp += 1
-                        matched_gt.add(best_gt)
+                    elif isinstance(outputs, list) and i < len(outputs):
+                        # 출력이 리스트인 경우 (각 요소가 이미지별 예측)
+                        output = outputs[i]
+                        if isinstance(output, dict):
+                            pred_boxes = output.get("boxes", torch.zeros((0, 4), device=self.device))
+                            pred_scores = output.get("scores", torch.zeros(0, device=self.device))
+                            pred_labels = output.get("labels", torch.zeros(0, dtype=torch.long, device=self.device))
+                        else:
+                            # 예상치 못한 출력 형식이면 건너뜀
+                            continue
                     else:
-                        fp += 1
+                        # 처리할 수 없는 출력 형식이면 건너뜀
+                        continue
+                    
+                    # 타겟 박스, 클래스
+                    gt_boxes = target["boxes"].to(self.device) if "boxes" in target else torch.zeros((0, 4), device=self.device)
+                    gt_labels = target["labels"].to(self.device) if "labels" in target else torch.zeros(0, dtype=torch.long, device=self.device)
+                    
+                    # 예측이 없거나 라벨이 없으면 건너뜀
+                    if len(pred_boxes) == 0 or len(gt_boxes) == 0:
+                        continue
+                    
+                    # 임계값 이상 예측만 사용
+                    keep = pred_scores > 0.5
+                    pred_boxes = pred_boxes[keep]
+                    pred_labels = pred_labels[keep]
+                    
+                    # 간단한 매칭 (실제로는 더 정교한 평가 필요)
+                    matched_gt = set()
+                    tp = 0
+                    fp = 0
+                    
+                    # 박스 포맷 확인 및 변환
+                    if pred_boxes.size(-1) == 4:  # 박스가 존재하는 경우
+                        for pb_idx, (pb, pl) in enumerate(zip(pred_boxes, pred_labels)):
+                            best_iou = 0.5  # IoU 임계값
+                            best_gt = -1
+                            
+                            for j, (gb, gl) in enumerate(zip(gt_boxes, gt_labels)):
+                                if j in matched_gt or pl != gl:
+                                    continue
+                                
+                                # IoU 계산 (간소화)
+                                try:
+                                    iou = self._box_iou(pb.cpu(), gb.cpu())
+                                except Exception as e:
+                                    # IoU 계산 실패 시 건너뜀
+                                    continue
+                                
+                                if iou > best_iou:
+                                    best_iou = iou
+                                    best_gt = j
+                            
+                            if best_gt >= 0:
+                                tp += 1
+                                matched_gt.add(best_gt)
+                            else:
+                                fp += 1
+                    
+                    total_tp += tp
+                    total_fp += fp
+                    total_gt += len(gt_boxes)
                 
-                total_tp += tp
-                total_fp += fp
-                total_gt += len(gt_boxes)
+            except Exception as e:
+                # 처리 중 오류가 발생하면 로그 출력 후 계속 진행
+                print(f"배치 {batch_idx} 처리 중 오류 발생: {e}")
+                continue
             
             # 진행 상황 로깅
             if (batch_idx + 1) % log_interval == 0 or (batch_idx + 1) == batch_count:

@@ -176,5 +176,12 @@ cython_debug/
 # 데이터 폴더
 data/
 subset/
+real_pro_dataset/
+aug_balanced_dataset/
+balanced_subset_fixed/
+results_yolo8s_aug_balanced_tuning/
+runs/
+visualized_aug_balanced_train_labels/
+tools/test_predict
 
 .DS_Store
