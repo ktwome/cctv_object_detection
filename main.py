@@ -445,7 +445,7 @@ def main():
         
         # 5) 평가: 감지 정확도 계산 (정밀도, 재현율, F1 점수)
         print("5. 평가 수행 (IOU 임계값: 0.5)")
-        metrics = evaluate_detection(f"{args.test_dir}/labels", out_label_dir, debug=True)
+        metrics = evaluate_detection(f"{args.test_dir}/labels_yolo", out_label_dir, debug=True)
         
         print(
             f"종합 평가 결과 - Precision: {metrics['precision']:.4f}, Recall: {metrics['recall']:.4f}, F1: {metrics['f1']:.4f}"

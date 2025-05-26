@@ -30,7 +30,7 @@ def train_model(
     augment=True,
     mosaic=1.0,
     mixup=0.0,
-    degrees=0.0,
+    degrees=0.0, 
     translate=0.1,
     scale=0.5,
     shear=0.0,

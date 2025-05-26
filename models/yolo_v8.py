@@ -57,7 +57,7 @@ import optuna
 #     return on_epoch_end_pruning_callback
 
 
-class YOLOModel:
+class YOLOModel:       
     """
     YOLOv8(You Only Look Once) 모델을 위한 래퍼 클래스입니다.
 
